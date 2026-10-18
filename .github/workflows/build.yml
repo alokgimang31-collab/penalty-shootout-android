@@ -43,6 +43,32 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK in Buildozer directory
+        run: |
+          SDK="$HOME/.buildozer/android/platform/android-sdk"
+          mkdir -p "$SDK"
+
+          sdkmanager --sdk_root="$SDK" \
+            "cmdline-tools;latest" \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2"
+
+          echo "ANDROIDSDK=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "$SDK/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK/build-tools/33.0.2" >> "$GITHUB_PATH"
+
+      - name: Verify Android Build Tools
+        run: |
+          SDK="$HOME/.buildozer/android/platform/android-sdk"
+          ls -la "$SDK/build-tools/33.0.2"
+          test -x "$SDK/build-tools/33.0.2/aidl"
+          "$SDK/build-tools/33.0.2/aidl" --version
+
       - name: Install Buildozer
         run: |
           python -m pip install --upgrade pip
@@ -50,9 +76,8 @@ jobs:
 
       - name: Check project files
         run: |
-          test -f main.py || { echo "ERROR: main.py tidak ditemukan"; exit 1; }
-          test -f buildozer.spec || { echo "ERROR: buildozer.spec tidak ditemukan"; exit 1; }
-          echo "File proyek ditemukan."
+          test -f main.py
+          test -f buildozer.spec
           java -version
           buildozer --version
 
@@ -67,15 +92,11 @@ jobs:
         if: steps.build_apk.outcome == 'failure'
         run: |
           echo "========== BARIS ERROR =========="
-          if [ -f build.log ]; then
-            grep -niE -C 3 \
-              'Traceback|Exception|Error:|ERROR:|FAILED|Aidl not found|No such file|command not found|exit code' \
-              build.log | tail -n 100 || true
-            echo "========== 60 BARIS TERAKHIR =========="
-            tail -n 60 build.log
-          else
-            echo "File build.log tidak ditemukan."
-          fi
+          grep -niE -C 3 \
+            'Traceback|Exception|Error:|ERROR:|FAILED|Aidl not found|No such file|command not found|exit code' \
+            build.log | tail -n 100 || true
+          echo "========== 60 BARIS TERAKHIR =========="
+          tail -n 60 build.log
 
       - name: Upload build log
         if: always()
@@ -89,7 +110,7 @@ jobs:
       - name: Stop if APK build failed
         if: steps.build_apk.outcome == 'failure'
         run: |
-          echo "Pembuatan APK gagal. Periksa langkah Show error summary."
+          echo "Pembuatan APK gagal. Periksa Show error summary."
           exit 1
 
       - name: Upload APK
