@@ -9,6 +9,9 @@ on:
       - 'buildozer.spec'
       - '.github/workflows/build.yml'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-22.04
@@ -19,7 +22,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Java 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -45,13 +48,49 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install buildozer cython==0.29.36
 
-      - name: Accept Android SDK licenses
+      - name: Check project files
         run: |
-          sed -i '/^\[buildozer\]/i android.accept_sdk_license = True' buildozer.spec
+          test -f main.py || { echo "ERROR: main.py tidak ditemukan"; exit 1; }
+          test -f buildozer.spec || { echo "ERROR: buildozer.spec tidak ditemukan"; exit 1; }
+          echo "File proyek ditemukan."
+          java -version
+          buildozer --version
 
       - name: Build APK
+        id: build_apk
+        continue-on-error: true
         run: |
-          buildozer -v android debug
+          set -o pipefail
+          buildozer -v android debug 2>&1 | tee build.log
+
+      - name: Show error summary
+        if: steps.build_apk.outcome == 'failure'
+        run: |
+          echo "========== BARIS ERROR =========="
+          if [ -f build.log ]; then
+            grep -niE -C 3 \
+              'Traceback|Exception|Error:|ERROR:|FAILED|Aidl not found|No such file|command not found|exit code' \
+              build.log | tail -n 100 || true
+            echo "========== 60 BARIS TERAKHIR =========="
+            tail -n 60 build.log
+          else
+            echo "File build.log tidak ditemukan."
+          fi
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Penalty-Shootout-Build-Log
+          path: build.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+      - name: Stop if APK build failed
+        if: steps.build_apk.outcome == 'failure'
+        run: |
+          echo "Pembuatan APK gagal. Periksa langkah Show error summary."
+          exit 1
 
       - name: Upload APK
         if: success()
@@ -60,3 +99,4 @@ jobs:
           name: Penalty-Shootout-APK
           path: bin/*.apk
           if-no-files-found: error
+          retention-days: 7
